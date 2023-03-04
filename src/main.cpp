@@ -11,7 +11,7 @@ KSEQ_INIT2(, gzFile, gzread)
 int main(int argc, char* argv[]){
     std::cout << "Hello World!" << std::endl;
     
-    std::string refFilename = "../data/HIVSequence.fa";
+    std::string refFilename = "../data/Mississippi.fa";
 
     gzFile fp = gzopen(refFilename.c_str(), "r");
     if (!fp) {
@@ -34,7 +34,9 @@ int main(int argc, char* argv[]){
     seq.allocateSequenceArray(record->seq.l+1);
 
     seq.copyToGPU(record->seq.s);
-    seq.copyToCPU(cpuIndexes);
+    seq.computeSuffixArray();
+
+    seq.copyToCPU(cpuIndexes, record->seq.s);
 
     for(size_t i = 0; i < 20; i++){
         std::cout << cpuIndexes[i] << " " << record->seq.s[i] << std::endl;
