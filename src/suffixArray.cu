@@ -108,10 +108,10 @@ __global__ void shift(size_t l, uint32_t* bucket, uint32_t* bucket2, uint64_t* c
         bucket2[i] = bucket[i+offset];
         combinedBuckets[i] = ((uint64_t)bucket[i] << 32) + bucket2[i];
     }
-    for(int i = l - offset + bs*bx+tx; i < l; i+=bs*gs){
-        bucket2[i] = 0;
-        combinedBuckets[i] = ((uint64_t)bucket[i] << 32) + bucket2[i];
-    }
+    // for(int i = l - offset + bs*bx+tx; i < l; i+=bs*gs){
+    //     bucket2[i] = 0;
+    //     combinedBuckets[i] = ((uint64_t)bucket[i] << 32) + bucket2[i];
+    // }
 }
 
 __global__ void SAToISA(size_t l, uint32_t* indexes, uint32_t* bucket2, uint32_t* bucket){
@@ -192,10 +192,10 @@ void SuffixArray::Sequence::computeSuffixArray(){
         thrust::sort_by_key(combinedBucketsPtr, combinedBucketsPtr + l, indexesPtr);
         rebucket<<<1, min(1024, l)>>>(l,combinedBuckets,bucket2);
 
-        allSingleton<<<numBlocks, blockSize>>>(l,bucket2);  
+        allSingleton<<<numBlocks,  min(1024, l)>>>(l,bucket2);  
         cudaMemcpyFromSymbol(&allSingletonAnswer, d_allSingletonAnswer, sizeof(allSingletonAnswer), 0, cudaMemcpyDeviceToHost);
         
-        std::cout << allSingletonAnswer << std::endl;
+        // std::cout << allSingletonAnswer << " " << offset << std::endl;
 
         offset<<=1;
     }

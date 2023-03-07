@@ -1,6 +1,9 @@
 #include <iostream>
 #include <fstream>
 #include <stdlib.h>
+#include <vector>
+#include <algorithm>
+// #include <pair>
 #include "suffixArray.cuh"
 #include "kseq.h"
 #include "zlib.h"
@@ -11,7 +14,7 @@ KSEQ_INIT2(, gzFile, gzread)
 int main(int argc, char* argv[]){
     std::cout << "Hello World!" << std::endl;
     
-    std::string refFilename = "../data/Mississippi.fa";
+    std::string refFilename = "../data/HIVSequence.fa";
 
     gzFile fp = gzopen(refFilename.c_str(), "r");
     if (!fp) {
@@ -27,19 +30,36 @@ int main(int argc, char* argv[]){
     printf("Sequence name: %s\n", record->name.s);
     printf("Sequence size: %zu\n", record->seq.l);
 
+    std::string s;
+    for(int i = 0; i < 1023; i++)s+=record->seq.s[i];
+    s+='$';
+    std::vector< std::pair< std::string, int > > v({{s, 0}});
+    for(int i = 1; i < s.length(); i++){
+        std::rotate(s.begin(), s.begin()+1, s.end());
+        v.push_back({s, i});
+    }
+    std::sort(v.begin(), v.end());
+
     // uint32_t* cpuIndexes = (uint32_t *)malloc(sizeof(uint32_t)*(record->seq.l+1));
     uint32_t* cpuIndexes = new uint32_t[record->seq.l+1];
 
     SuffixArray::Sequence seq;
-    seq.allocateSequenceArray(record->seq.l+1);
+    seq.allocateSequenceArray(1024);
+
+    // seq.allocateSequenceArray(record->seq.l+1);
 
     seq.copyToGPU(record->seq.s);
     seq.computeSuffixArray();
 
     seq.copyToCPU(cpuIndexes, record->seq.s);
 
-    for(size_t i = 0; i < 20; i++){
-        std::cout << cpuIndexes[i] << " " << record->seq.s[i] << std::endl;
+    // for(size_t i = 0; i < 500; i++){
+    //     std::cout << cpuIndexes[i] << " " << v[i].second << std::endl;
+    // }
+    for(size_t i = 0; i < 1024; i++){
+        if(cpuIndexes[i] != v[i].second){
+            std::cout << "CHANGE!!!" << std::endl;
+        }
     }
 
     seq.freeSequenceArray();
