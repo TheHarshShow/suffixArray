@@ -59,6 +59,45 @@ __global__ void rebucket(size_t l, char* sequence, uint32_t* bucket2){
     }
 }
 
+__global__ void rebucket(size_t l, uint64_t* combinedBuckets, uint32_t* bucket2){
+    int tx = threadIdx.x;
+    int bx = blockIdx.x;
+    int bs = blockDim.x;
+    int gs = gridDim.x;
+
+    __shared__ uint32_t workbench[3000];
+
+    for(int i = bx*bs+tx; i < l; i+=bs*gs){
+        if(i > 0 && combinedBuckets[i] != combinedBuckets[i-1]){
+            workbench[i] = i;
+        } else {
+            workbench[i] = 0;
+        }
+    }
+    __syncthreads();
+
+    int pout=0, pin=1;
+
+    if(bx == 0){
+        for(int offset = 1; offset < l; offset *= 2){
+            if(tx <= l){
+                pout = 1 - pout;
+                pin = 1 - pin;
+                if(tx >= offset){
+                    workbench[pout*(l+1)+tx] = max(workbench[pin*(l+1)+tx], workbench[pin*(l+1)+tx-offset]);
+                } else {
+                    workbench[pout*(l+1)+tx] = workbench[pin*(l+1)+tx];
+                }
+            }
+            __syncthreads();
+        }
+
+        for(int i = tx; i < l; i += bs){
+            bucket2[i] = workbench[pout*(l+1)+i];
+        }
+    }
+}
+
 __global__ void shift(size_t l, uint32_t* bucket, uint32_t* bucket2, uint64_t* combinedBuckets, size_t offset){
     int tx = threadIdx.x;
     int bx = blockIdx.x;
@@ -86,13 +125,42 @@ __global__ void SAToISA(size_t l, uint32_t* indexes, uint32_t* bucket2, uint32_t
     }
 }
 
+__device__ bool d_allSingletonAnswer;
+
+__global__ void allSingleton(size_t l, uint32_t* bucket){
+    int tx = threadIdx.x;
+    int bx = blockIdx.x;
+    int bs = blockDim.x;
+    int gs = gridDim.x;
+
+    __shared__ bool orArray[3000];
+    for(int i = bx*bs+tx; i < l-1; i+=bs*gs){
+        orArray[i] = (bucket[i] == bucket[i+1]);
+    }
+    __syncthreads();
+
+    if(bx == 0){
+        for(uint32_t s = l/2; s > 0; s>>=1){
+            if(tx < s && tx+s < l-1){
+                orArray[tx] |= orArray[tx+s];
+            }
+            __syncthreads();
+        }
+
+        d_allSingletonAnswer = !orArray[0];
+        // printf("All Singleton: %d\n", d_allSingletonAnswer);
+        // return orArray[0];
+    }
+}
+
 void SuffixArray::Sequence::allocateSequenceArray(size_t n){
     l = n;
     cudaMalloc(&sequence, l*sizeof(char));
+
     cudaMalloc(&indexes, l*sizeof(uint32_t));
     cudaMalloc(&bucket2, l*sizeof(uint32_t));
     cudaMalloc(&bucket, l*sizeof(uint32_t));
-    cudaMalloc(&combinedBuckets, l*sizeof(uint32_t));
+    cudaMalloc(&combinedBuckets, l*sizeof(uint64_t));
 }
 
 void SuffixArray::Sequence::copyToGPU(char* cpuSequence){
@@ -110,15 +178,27 @@ void SuffixArray::Sequence::computeSuffixArray(){
 
     thrust::sort_by_key(sequencePtr, sequencePtr + l, indexesPtr);
 
-    rebucket<<<1, min(1024, l)>>>(l,sequence,bucket2);
-    SAToISA<<<numBlocks, blockSize>>>(l, indexes, bucket2, bucket);
-    shift<<<numBlocks,blockSize>>>(l,bucket,bucket2,combinedBuckets,1);
-
-    assignIndexes<<<numBlocks, blockSize>>>(l, sequence, indexes);
-
-    thrust::sort_by_key(combinedBucketsPtr, combinedBucketsPtr + l, indexesPtr);
+    size_t offset = 1;
+    bool allSingletonAnswer = false;
     
+    rebucket<<<1, min(1024, l)>>>(l,sequence,bucket2);
 
+    while(!allSingletonAnswer){
+        SAToISA<<<numBlocks, blockSize>>>(l, indexes, bucket2, bucket);
+        shift<<<numBlocks,blockSize>>>(l,bucket,bucket2,combinedBuckets,offset);
+
+        assignIndexes<<<numBlocks, blockSize>>>(l, sequence, indexes);
+
+        thrust::sort_by_key(combinedBucketsPtr, combinedBucketsPtr + l, indexesPtr);
+        rebucket<<<1, min(1024, l)>>>(l,combinedBuckets,bucket2);
+
+        allSingleton<<<numBlocks, blockSize>>>(l,bucket2);  
+        cudaMemcpyFromSymbol(&allSingletonAnswer, d_allSingletonAnswer, sizeof(allSingletonAnswer), 0, cudaMemcpyDeviceToHost);
+        
+        std::cout << allSingletonAnswer << std::endl;
+
+        offset<<=1;
+    }
 }
 
 #define HANDLE_GPU_ERROR(ans)		\
