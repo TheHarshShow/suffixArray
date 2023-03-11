@@ -31,7 +31,7 @@ int main(int argc, char* argv[]){
     printf("Sequence size: %zu\n", record->seq.l);
 
     std::string s;
-    for(int i = 0; i < 1023; i++)s+=record->seq.s[i];
+    for(int i = 0; i < record->seq.l; i++)s+=record->seq.s[i];
     s+='$';
     std::vector< std::pair< std::string, int > > v({{s, 0}});
     for(int i = 1; i < s.length(); i++){
@@ -41,35 +41,35 @@ int main(int argc, char* argv[]){
     std::sort(v.begin(), v.end());
 
     // uint32_t* cpuIndexes = (uint32_t *)malloc(sizeof(uint32_t)*(record->seq.l+1));
-    uint32_t* cpuIndexes = new uint32_t[1024];
+    uint32_t* cpuIndexes = new uint32_t[record->seq.l+1];
 
     SuffixArray::Sequence seq;
-    seq.allocateSequenceArray(1024);
-
     // seq.allocateSequenceArray(record->seq.l+1);
+
+    seq.allocateSequenceArray(record->seq.l+1);
 
     seq.copyToGPU(record->seq.s);
     seq.computeSuffixArray();
 
     seq.copyToCPU(cpuIndexes, record->seq.s);
 
-    // for(size_t i = 0; i < 500; i++){
-    //     std::cout << cpuIndexes[i] << " " << v[i].second << std::endl;
-    // }
-    for(size_t i = 0; i < 1024; i++){
+    // // for(size_t i = 0; i < 500; i++){
+    // //     std::cout << cpuIndexes[i] << " " << v[i].second << std::endl;
+    // // }
+    for(size_t i = 0; i < record->seq.l+1; i++){
         if(cpuIndexes[i] != v[i].second){
             std::cout << "CHANGE!!! " << cpuIndexes[i] << " " << v[i].second << std::endl;
         }
     }
-    // for(size_t i = 0; i < record->seq.l+1; i++){
-    //         std::cout << cpuIndexes[i] << std::endl;
-    // }
+    // // for(size_t i = 0; i < record->seq.l+1; i++){
+    // //         std::cout << cpuIndexes[i] << std::endl;
+    // // }
 
-    seq.freeSequenceArray();
+    // seq.freeSequenceArray();
 
-    delete[] cpuIndexes;
-    // free(cpuIndexes);
+    // delete[] cpuIndexes;
+    // // free(cpuIndexes);
 
-    std::cout << "Hello World 5!" << std::endl;
+    // std::cout << "Hello World 5!" << std::endl;
     
 }

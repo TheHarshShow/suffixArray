@@ -26,38 +26,111 @@ __global__ void rebucket(size_t l, char* sequence, uint32_t* bucket2){
     int bs = blockDim.x;
     int gs = gridDim.x;
 
-    __shared__ uint32_t workbench[3000];
-
     for(int i = bx*bs+tx; i < l; i+=bs*gs){
         if(i > 0 && sequence[i] != sequence[i-1]){
-            workbench[i] = i;
+            bucket2[i] = i;
         } else {
-            workbench[i] = 0;
-        }
-    }
-    __syncthreads();
-
-    int pout=0, pin=1;
-
-    if(bx == 0){
-        for(int offset = 1; offset < l; offset *= 2){
-            if(tx <= l){
-                pout = 1 - pout;
-                pin = 1 - pin;
-                if(tx >= offset){
-                    workbench[pout*(l+1)+tx] = max(workbench[pin*(l+1)+tx], workbench[pin*(l+1)+tx-offset]);
-                } else {
-                    workbench[pout*(l+1)+tx] = workbench[pin*(l+1)+tx];
-                }
-            }
-            __syncthreads();
-        }
-
-        for(int i = tx; i < l; i += bs){
-            bucket2[i] = workbench[pout*(l+1)+i];
+            bucket2[i] = 0;
         }
     }
 }
+
+__global__ void prefixScanKernel(size_t l, uint32_t* prefixArray){
+    int tx = threadIdx.x;
+    int bx = blockIdx.x;
+    int bs = blockDim.x;
+    int gs = gridDim.x;
+
+    for(size_t i = bx*bs; i < l; i+=bs*gs){
+        for(size_t j = i+1; j < i+bs; j++){
+            prefixArray[j] = max(prefixArray[j-1],prefixArray[j]);
+        }
+    }
+}
+
+__global__ void copyMaxes(size_t l, size_t newL, uint32_t* prefixArray, uint32_t* newBucket){
+    int tx = threadIdx.x;
+    int bx = blockIdx.x;
+    int bs = blockDim.x;
+    int gs = gridDim.x;
+
+    if(tx == 0){
+        for(size_t i = bx*bs; i < l - bs; i+=bs*gs){
+            newBucket[i/bs] = prefixArray[i+bs-1];
+        }
+    }
+}
+
+__global__ void propogate(size_t l, size_t newL, uint32_t* prefixArray, uint32_t* newBucket){
+    int tx = threadIdx.x;
+    int bx = blockIdx.x;
+    int bs = blockDim.x;
+    int gs = gridDim.x;
+
+    for(size_t i = bx*bs; i < l - bs; i+=bs*gs){
+        uint32_t newMax = newBucket[i/bs];
+        prefixArray[i+bs+tx] = max(prefixArray[i+bs+tx], newMax);
+    }
+}
+
+void prefixScan(size_t l, uint32_t* bucket2, size_t numBlocks, size_t blockSize){
+    // run prefix kernel
+    prefixScanKernel<<<numBlocks,blockSize>>>(l,bucket2);
+
+    if(l > blockSize){
+        size_t newL = (l-1)/blockSize;
+        // create GPU array
+        uint32_t* newBucket;
+        cudaMalloc(&newBucket, newL*sizeof(uint32_t));
+        // copy to newBucket
+        copyMaxes<<<numBlocks,blockSize>>>(l,newL,bucket2,newBucket);
+
+        prefixScan(newL, newBucket, numBlocks, blockSize);
+        //propogate kernel
+        propogate<<<numBlocks,blockSize>>>(l,newL,bucket2,newBucket);
+
+        cudaFree(newBucket);
+    }
+}
+
+// __global__ void rebucket(size_t l, char* sequence, uint32_t* bucket2){
+//     int tx = threadIdx.x;
+//     int bx = blockIdx.x;
+//     int bs = blockDim.x;
+//     int gs = gridDim.x;
+
+//     __shared__ uint32_t workbench[3000];
+
+//     for(int i = bx*bs+tx; i < l; i+=bs*gs){
+//         if(i > 0 && sequence[i] != sequence[i-1]){
+//             workbench[i] = i;
+//         } else {
+//             workbench[i] = 0;
+//         }
+//     }
+//     __syncthreads();
+
+//     int pout=0, pin=1;
+
+//     if(bx == 0){
+//         for(int offset = 1; offset < l; offset *= 2){
+//             if(tx <= l){
+//                 pout = 1 - pout;
+//                 pin = 1 - pin;
+//                 if(tx >= offset){
+//                     workbench[pout*(l+1)+tx] = max(workbench[pin*(l+1)+tx], workbench[pin*(l+1)+tx-offset]);
+//                 } else {
+//                     workbench[pout*(l+1)+tx] = workbench[pin*(l+1)+tx];
+//                 }
+//             }
+//             __syncthreads();
+//         }
+
+//         for(int i = tx; i < l; i += bs){
+//             bucket2[i] = workbench[pout*(l+1)+i];
+//         }
+//     }
+// }
 
 __global__ void rebucket(size_t l, uint64_t* combinedBuckets, uint32_t* bucket2){
     int tx = threadIdx.x;
@@ -65,35 +138,11 @@ __global__ void rebucket(size_t l, uint64_t* combinedBuckets, uint32_t* bucket2)
     int bs = blockDim.x;
     int gs = gridDim.x;
 
-    __shared__ uint32_t workbench[3000];
-
     for(int i = bx*bs+tx; i < l; i+=bs*gs){
         if(i > 0 && combinedBuckets[i] != combinedBuckets[i-1]){
-            workbench[i] = i;
+            bucket2[i] = i;
         } else {
-            workbench[i] = 0;
-        }
-    }
-    __syncthreads();
-
-    int pout=0, pin=1;
-
-    if(bx == 0){
-        for(int offset = 1; offset < l; offset *= 2){
-            if(tx <= l){
-                pout = 1 - pout;
-                pin = 1 - pin;
-                if(tx >= offset){
-                    workbench[pout*(l+1)+tx] = max(workbench[pin*(l+1)+tx], workbench[pin*(l+1)+tx-offset]);
-                } else {
-                    workbench[pout*(l+1)+tx] = workbench[pin*(l+1)+tx];
-                }
-            }
-            __syncthreads();
-        }
-
-        for(int i = tx; i < l; i += bs){
-            bucket2[i] = workbench[pout*(l+1)+i];
+            bucket2[i] = 0;
         }
     }
 }
@@ -133,24 +182,33 @@ __global__ void allSingleton(size_t l, uint32_t* bucket){
     int bs = blockDim.x;
     int gs = gridDim.x;
 
-    __shared__ bool orArray[3000];
-    for(int i = bx*bs+tx; i < l-1; i+=bs*gs){
-        orArray[i] = (bucket[i] == bucket[i+1]);
-    }
-    __syncthreads();
-
-    if(bx == 0){
-        for(uint32_t s = l/2; s > 0; s>>=1){
-            if(tx < s && tx+s < l-1){
-                orArray[tx] |= orArray[tx+s];
+    if(bx == 0 && tx == 0){
+        d_allSingletonAnswer = 1;
+        for(int i = 1; i < l; i++){
+            if(bucket[i] == bucket[i-1]){
+                d_allSingletonAnswer = 0;
             }
-            __syncthreads();
         }
-
-        d_allSingletonAnswer = !orArray[0];
-        // printf("All Singleton: %d\n", d_allSingletonAnswer);
-        // return orArray[0];
     }
+
+    // __shared__ bool orArray[3000];
+    // for(int i = bx*bs+tx; i < l-1; i+=bs*gs){
+    //     orArray[i] = (bucket[i] == bucket[i+1]);
+    // }
+    // __syncthreads();
+
+    // if(bx == 0){
+    //     for(uint32_t s = l/2; s > 0; s>>=1){
+    //         if(tx < s && tx+s < l-1){
+    //             orArray[tx] |= orArray[tx+s];
+    //         }
+    //         __syncthreads();
+    //     }
+
+    //     d_allSingletonAnswer = !orArray[0];
+    //     // printf("All Singleton: %d\n", d_allSingletonAnswer);
+    //     // return orArray[0];
+    // }
 }
 
 void SuffixArray::Sequence::allocateSequenceArray(size_t n){
@@ -181,7 +239,8 @@ void SuffixArray::Sequence::computeSuffixArray(){
     size_t offset = 1;
     bool allSingletonAnswer = false;
     
-    rebucket<<<1, min(1024, l)>>>(l,sequence,bucket2);
+    rebucket<<<numBlocks, blockSize>>>(l,sequence,bucket2);
+    prefixScan(l,bucket2,numBlocks,blockSize);
 
     while(!allSingletonAnswer){
         SAToISA<<<numBlocks, blockSize>>>(l, indexes, bucket2, bucket);
@@ -190,9 +249,10 @@ void SuffixArray::Sequence::computeSuffixArray(){
         assignIndexes<<<numBlocks, blockSize>>>(l, sequence, indexes);
 
         thrust::sort_by_key(combinedBucketsPtr, combinedBucketsPtr + l, indexesPtr);
-        rebucket<<<1, min(1024, l)>>>(l,combinedBuckets,bucket2);
+        rebucket<<<numBlocks, blockSize>>>(l,combinedBuckets,bucket2);
+        prefixScan(l,bucket2,numBlocks,blockSize);
 
-        allSingleton<<<numBlocks,  min(1024, l)>>>(l,bucket2);  
+        allSingleton<<<numBlocks, blockSize>>>(l,bucket2);  
         cudaMemcpyFromSymbol(&allSingletonAnswer, d_allSingletonAnswer, sizeof(allSingletonAnswer), 0, cudaMemcpyDeviceToHost);
         
         uint32_t* cpuIndexes2 = new uint32_t[l];
