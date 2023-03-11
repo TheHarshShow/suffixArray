@@ -53,22 +53,15 @@ int main(int argc, char* argv[]){
 
     seq.copyToCPU(cpuIndexes, record->seq.s);
 
-    // // for(size_t i = 0; i < 500; i++){
-    // //     std::cout << cpuIndexes[i] << " " << v[i].second << std::endl;
-    // // }
     for(size_t i = 0; i < record->seq.l+1; i++){
         if(cpuIndexes[i] != v[i].second){
             std::cout << "CHANGE!!! " << cpuIndexes[i] << " " << v[i].second << std::endl;
         }
     }
-    // // for(size_t i = 0; i < record->seq.l+1; i++){
-    // //         std::cout << cpuIndexes[i] << std::endl;
-    // // }
 
-    // seq.freeSequenceArray();
+    seq.freeSequenceArray();
 
-    // delete[] cpuIndexes;
-    // // free(cpuIndexes);
+    delete[] cpuIndexes;
 
     // std::cout << "Hello World 5!" << std::endl;
     

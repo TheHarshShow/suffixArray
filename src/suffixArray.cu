@@ -41,10 +41,41 @@ __global__ void prefixScanKernel(size_t l, uint32_t* prefixArray){
     int bs = blockDim.x;
     int gs = gridDim.x;
 
+    __shared__ uint32_t workbench[3000];
+
     for(size_t i = bx*bs; i < l; i+=bs*gs){
-        for(size_t j = i+1; j < i+bs; j++){
-            prefixArray[j] = max(prefixArray[j-1],prefixArray[j]);
+        int si = min(l - i, (size_t)bs);
+        for(size_t j = i+tx; j < i+si; j+=bs){
+            workbench[j-i] = prefixArray[j];
         }
+        __syncthreads();
+        // for(size_t j = 1; j < si; j++){
+        //     workbench[j] = max(workbench[j-1],workbench[j]);
+        // }
+        // __syncthreads();
+        // for(size_t j = i+1; j < i+si; j++){
+        //     prefixArray[j] = max(prefixArray[j-1],prefixArray[j]);
+        // }
+
+        int pout=0, pin=1;
+
+        for(int offset = 1; offset < si; offset *= 2){
+            if(tx <= si){
+                pout = 1 - pout;
+                pin = 1 - pin;
+                if(tx >= offset){
+                    workbench[pout*(si+1)+tx] = max(workbench[pin*(si+1)+tx], workbench[pin*(si+1)+tx-offset]);
+                } else {
+                    workbench[pout*(si+1)+tx] = workbench[pin*(si+1)+tx];
+                }
+            }
+            __syncthreads();
+        }
+
+        for(int j = tx; j < si; j += bs){
+            prefixArray[i+j] = workbench[pout*(si+1)+j];
+        }
+
     }
 }
 
