@@ -205,13 +205,24 @@ __global__ void SAToISA(size_t l, uint32_t* indexes, uint32_t* bucket2, uint32_t
     }
 }
 
-__device__ bool d_allSingletonAnswer;
+__device__ bool d_allSingletonAnswer = 1;
 
 __global__ void allSingleton(size_t l, uint32_t* bucket){
     int tx = threadIdx.x;
     int bx = blockIdx.x;
     int bs = blockDim.x;
     int gs = gridDim.x;
+
+    // if(bx == 0 && tx == 0){
+    //     d_allSingletonAnswer = 1;
+    // }
+    // bool allSingleton = true;
+
+    // for(int i = bs*bx+tx+1; i < l; i+=bs*gs){
+    //     if(bucket[i] == bucket[i-1]){
+    //         allSingleton = false;
+    //     }
+    // }
 
     if(bx == 0 && tx == 0){
         d_allSingletonAnswer = 1;
