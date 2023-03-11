@@ -25,4 +25,3 @@ add_executable (suffixArray
     src/main.cpp)
 
 target_link_libraries(suffixArray PRIVATE ${Boost_LIBRARIES} ${ZLIB_LIBRARIES} ${TBB_IMPORTED_TARGETS})
-

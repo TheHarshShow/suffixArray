@@ -108,10 +108,10 @@ __global__ void shift(size_t l, uint32_t* bucket, uint32_t* bucket2, uint64_t* c
         bucket2[i] = bucket[i+offset];
         combinedBuckets[i] = ((uint64_t)bucket[i] << 32) + bucket2[i];
     }
-    // for(int i = l - offset + bs*bx+tx; i < l; i+=bs*gs){
-    //     bucket2[i] = 0;
-    //     combinedBuckets[i] = ((uint64_t)bucket[i] << 32) + bucket2[i];
-    // }
+    for(int i = l - offset + bs*bx+tx; i < l; i+=bs*gs){
+        bucket2[i] = 0;
+        combinedBuckets[i] = ((uint64_t)bucket[i] << 32) + bucket2[i];
+    }
 }
 
 __global__ void SAToISA(size_t l, uint32_t* indexes, uint32_t* bucket2, uint32_t* bucket){
@@ -169,7 +169,7 @@ void SuffixArray::Sequence::copyToGPU(char* cpuSequence){
 
 void SuffixArray::Sequence::computeSuffixArray(){
     int numBlocks = 1024; // i.e. number of thread blocks on the GPU
-    int blockSize = 512; 
+    int blockSize = 1024; 
 
     assignIndexes<<<numBlocks, blockSize>>>(l, sequence, indexes);
     thrust::device_ptr< uint32_t > indexesPtr(indexes);
@@ -195,6 +195,13 @@ void SuffixArray::Sequence::computeSuffixArray(){
         allSingleton<<<numBlocks,  min(1024, l)>>>(l,bucket2);  
         cudaMemcpyFromSymbol(&allSingletonAnswer, d_allSingletonAnswer, sizeof(allSingletonAnswer), 0, cudaMemcpyDeviceToHost);
         
+        uint32_t* cpuIndexes2 = new uint32_t[l];
+        // cudaMemcpy(cpuIndexes2, indexes, l*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+        // for(int i = 0; i < l; i++){
+        //     std::cout << cpuIndexes2[i] << " ";
+        // }
+        // std::cout << std::endl;
+
         // std::cout << allSingletonAnswer << " " << offset << std::endl;
 
         offset<<=1;

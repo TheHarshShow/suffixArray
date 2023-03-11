@@ -41,7 +41,7 @@ int main(int argc, char* argv[]){
     std::sort(v.begin(), v.end());
 
     // uint32_t* cpuIndexes = (uint32_t *)malloc(sizeof(uint32_t)*(record->seq.l+1));
-    uint32_t* cpuIndexes = new uint32_t[record->seq.l+1];
+    uint32_t* cpuIndexes = new uint32_t[1024];
 
     SuffixArray::Sequence seq;
     seq.allocateSequenceArray(1024);
@@ -58,9 +58,12 @@ int main(int argc, char* argv[]){
     // }
     for(size_t i = 0; i < 1024; i++){
         if(cpuIndexes[i] != v[i].second){
-            std::cout << "CHANGE!!!" << std::endl;
+            std::cout << "CHANGE!!! " << cpuIndexes[i] << " " << v[i].second << std::endl;
         }
     }
+    // for(size_t i = 0; i < record->seq.l+1; i++){
+    //         std::cout << cpuIndexes[i] << std::endl;
+    // }
 
     seq.freeSequenceArray();
 
