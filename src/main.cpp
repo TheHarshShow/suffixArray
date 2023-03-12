@@ -9,11 +9,14 @@
 #include "kseq.h"
 #include "zlib.h"
 
+#define SEQLEN 10000000
+
 // For reading in the FASTA file
 KSEQ_INIT2(, gzFile, gzread)
 
 using namespace std;
 
+// Sequential algorithm to compare with. Source: https://cp-algorithms.com/string/suffix-array.html#on2-log-n-approach
 std::vector<int> sort_cyclic_shifts(string const& s) {
     int n = s.size();
     const int alphabet = 256;
@@ -60,7 +63,6 @@ std::vector<int> sort_cyclic_shifts(string const& s) {
 }
 
 int main(int argc, char* argv[]){
-    std::cout << "Hello World!" << std::endl;
     
     std::string refFilename = "../data/dm62.fa";
 
@@ -79,17 +81,8 @@ int main(int argc, char* argv[]){
     printf("Sequence size: %zu\n", record->seq.l);
 
     std::string s;
-    for(int i = 0; i < 10000000; i++)s+=record->seq.s[i];
+    for(int i = 0; i < SEQLEN; i++)s+=record->seq.s[i];
     s+='$';
-
-    auto seqStart = std::chrono::high_resolution_clock::now();
-
-    // std::vector<int> v = sort_cyclic_shifts(s);
-
-    auto seqEnd = std::chrono::high_resolution_clock::now();
-    std::chrono::nanoseconds seqTime = seqEnd - seqStart;
-
-    std::cout << "Sequential Time: " << seqTime.count() << " nanoseconds \n";
 
     // std::vector< std::pair< std::string, int > > v({{s, 0}});
     // for(int i = 1; i < s.length(); i++){
@@ -98,16 +91,15 @@ int main(int argc, char* argv[]){
     // }
     // std::sort(v.begin(), v.end());
 
-    std::cout << "Sequential done" << std::endl;
 
     // uint32_t* cpuIndexes = (uint32_t *)malloc(sizeof(uint32_t)*(record->seq.l+1));
 
     // uint32_t* cpuIndexes = new uint32_t[record->seq.l+1];
-    uint32_t* cpuIndexes = new uint32_t[10000001];
+    uint32_t* cpuIndexes = new uint32_t[SEQLEN+1];
 
 
     SuffixArray::Sequence seq;
-    seq.allocateSequenceArray(10000001);
+    seq.allocateSequenceArray(SEQLEN+1);
 
     // seq.allocateSequenceArray(record->seq.l+1);
 
@@ -121,17 +113,34 @@ int main(int argc, char* argv[]){
     std::chrono::nanoseconds parTime = parEnd - parStart;
 
     std::cout << "Parallel Time: " << parTime.count() << " nanoseconds \n";
-    std::cout << "Speed up: " << seqTime.count()*1.0/parTime.count() << "  \n";
 
 
     seq.copyToCPU(cpuIndexes, record->seq.s);
 
-    // for(size_t i = 0; i < 10000001; i++){
-    //     if(cpuIndexes[i] != v[i]){
-    //         std::cout << "CHANGE!!! " << cpuIndexes[i] << " " << v[i] << std::endl;
-    //         break;
-    //     }
-    // }
+    auto seqStart = std::chrono::high_resolution_clock::now();
+
+    std::vector<int> v = sort_cyclic_shifts(s);
+
+    auto seqEnd = std::chrono::high_resolution_clock::now();
+    std::chrono::nanoseconds seqTime = seqEnd - seqStart;
+
+    std::cout << "Sequential Time: " << seqTime.count() << " nanoseconds \n";
+    std::cout << "Speed up: " << seqTime.count()*1.0/parTime.count() << "  \n";
+
+    bool matched = true;
+
+    for(size_t i = 0; i < SEQLEN+1; i++){
+        if(cpuIndexes[i] != v[i]){
+            matched = false;
+            break;
+        }
+    }
+
+    if(matched){
+        std::cout << "Both CPU and GPU algorithms computed the same suffix array." << std::endl;
+    } else {
+        std::cout << "Error: CPU and GPU algorithms computed different suffix arrays!" << std::endl;
+    }
 
     seq.freeSequenceArray();
 

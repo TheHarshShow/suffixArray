@@ -124,44 +124,88 @@ void prefixScan(size_t l, uint32_t* bucket2, size_t numBlocks, size_t blockSize)
     }
 }
 
-// __global__ void rebucket(size_t l, char* sequence, uint32_t* bucket2){
-//     int tx = threadIdx.x;
-//     int bx = blockIdx.x;
-//     int bs = blockDim.x;
-//     int gs = gridDim.x;
+__global__ void computeAllSingletonArray(size_t l, uint32_t* bucket, bool* singletonValues){
+    int tx = threadIdx.x;
+    int bx = blockIdx.x;
+    int bs = blockDim.x;
+    int gs = gridDim.x;
 
-//     __shared__ uint32_t workbench[3000];
+    for(int i = bs*bx+tx+1; i < l; i+=bs*gs){
+        singletonValues[i-1] = (bucket[i] != bucket[i-1]);
+    }
+}
 
-//     for(int i = bx*bs+tx; i < l; i+=bs*gs){
-//         if(i > 0 && sequence[i] != sequence[i-1]){
-//             workbench[i] = i;
-//         } else {
-//             workbench[i] = 0;
-//         }
-//     }
-//     __syncthreads();
+__global__ void allSingletonKernel(size_t l, size_t newL, bool* bucket, bool* newBucket){
+    int tx = threadIdx.x;
+    int bx = blockIdx.x;
+    int bs = blockDim.x;
+    int gs = gridDim.x;
 
-//     int pout=0, pin=1;
+    __shared__ bool workbench[1024];
+    for(int i = bs*bx+tx; i < newL; i+=bs*gs){
+        newBucket[i] = true;
+    }
 
-//     if(bx == 0){
-//         for(int offset = 1; offset < l; offset *= 2){
-//             if(tx <= l){
-//                 pout = 1 - pout;
-//                 pin = 1 - pin;
-//                 if(tx >= offset){
-//                     workbench[pout*(l+1)+tx] = max(workbench[pin*(l+1)+tx], workbench[pin*(l+1)+tx-offset]);
-//                 } else {
-//                     workbench[pout*(l+1)+tx] = workbench[pin*(l+1)+tx];
-//                 }
-//             }
-//             __syncthreads();
-//         }
+    for(int i = bs*bx; i < l; i+=bs*gs){
+        if(i+tx < l){
+            workbench[tx] = bucket[i+tx];
+            int si = min((size_t)bs, l-i);
+            __syncthreads();
+            for(uint32_t s = (si+1)/2; s > 0; s>>=1){
+                if(tx < s && tx+s < si){
+                    workbench[tx] = (workbench[tx+s] && workbench[tx]);
+                    // if(!(workbench[tx+s] && workbench[tx])){
+                    //     workbench[tx] = false;
+                    // }
+                }
+                __syncthreads();
+            }
+            if(tx == 0){
+                newBucket[i/bs]=workbench[0];
+            }
+        }
 
-//         for(int i = tx; i < l; i += bs){
-//             bucket2[i] = workbench[pout*(l+1)+i];
-//         }
-//     }
-// }
+        // for(int j = i; j < i+si; j++){
+        //     if(bucket[j] == false){
+        //         newBucket[i/bs] = false;
+        //     }
+        // }
+    }
+
+    // if(tx == 0){
+    //     for(int i = bs*bx; i < l; i+=bs*gs){
+    //         newBucket[i/bs] = true;
+    //         int si = min((size_t)bs, l-i);
+    //         for(int j = i; j < i+si; j++){
+    //             if(bucket[j] == false){
+    //                 newBucket[i/bs] = false;
+    //             }
+    //         }
+    //     }
+    // }
+
+}
+
+bool allSingleton(size_t l, bool* bucket, size_t numBlocks, size_t blockSize){
+    size_t newL = (l+blockSize-1)/blockSize;
+    bool allSingletonValue = true;
+    bool* newBucket;
+    cudaMalloc(&newBucket, newL*sizeof(bool));
+    // run all singleton kernel
+    allSingletonKernel<<<numBlocks,blockSize>>>(l,newL,bucket,newBucket);
+
+    if(newL > 1){
+        allSingletonValue = allSingleton(newL, newBucket, numBlocks, blockSize);
+        cudaFree(newBucket);
+        return allSingletonValue;
+    }
+    
+    cudaMemcpy(&allSingletonValue, newBucket, sizeof(bool), cudaMemcpyDeviceToHost);
+    cudaFree(newBucket);
+
+    return allSingletonValue;
+
+}
 
 __global__ void rebucket(size_t l, uint64_t* combinedBuckets, uint32_t* bucket2){
     int tx = threadIdx.x;
@@ -205,58 +249,10 @@ __global__ void SAToISA(size_t l, uint32_t* indexes, uint32_t* bucket2, uint32_t
     }
 }
 
-__device__ bool d_allSingletonAnswer = 1;
-
-__global__ void allSingleton(size_t l, uint32_t* bucket){
-    int tx = threadIdx.x;
-    int bx = blockIdx.x;
-    int bs = blockDim.x;
-    int gs = gridDim.x;
-
-    // if(bx == 0 && tx == 0){
-    //     d_allSingletonAnswer = 1;
-    // }
-    // bool allSingleton = true;
-
-    // for(int i = bs*bx+tx+1; i < l; i+=bs*gs){
-    //     if(bucket[i] == bucket[i-1]){
-    //         allSingleton = false;
-    //     }
-    // }
-
-    if(bx == 0 && tx == 0){
-        d_allSingletonAnswer = 1;
-        for(int i = 1; i < l; i++){
-            if(bucket[i] == bucket[i-1]){
-                d_allSingletonAnswer = 0;
-            }
-        }
-    }
-
-    // __shared__ bool orArray[3000];
-    // for(int i = bx*bs+tx; i < l-1; i+=bs*gs){
-    //     orArray[i] = (bucket[i] == bucket[i+1]);
-    // }
-    // __syncthreads();
-
-    // if(bx == 0){
-    //     for(uint32_t s = l/2; s > 0; s>>=1){
-    //         if(tx < s && tx+s < l-1){
-    //             orArray[tx] |= orArray[tx+s];
-    //         }
-    //         __syncthreads();
-    //     }
-
-    //     d_allSingletonAnswer = !orArray[0];
-    //     // printf("All Singleton: %d\n", d_allSingletonAnswer);
-    //     // return orArray[0];
-    // }
-}
-
 void SuffixArray::Sequence::allocateSequenceArray(size_t n){
     l = n;
     cudaMalloc(&sequence, l*sizeof(char));
-
+    cudaMalloc(&singletonValues, (l-1)*sizeof(char));
     cudaMalloc(&indexes, l*sizeof(uint32_t));
     cudaMalloc(&bucket2, l*sizeof(uint32_t));
     cudaMalloc(&bucket, l*sizeof(uint32_t));
@@ -294,10 +290,14 @@ void SuffixArray::Sequence::computeSuffixArray(){
         rebucket<<<numBlocks, blockSize>>>(l,combinedBuckets,bucket2);
         prefixScan(l,bucket2,numBlocks,blockSize);
 
-        allSingleton<<<numBlocks, blockSize>>>(l,bucket2);  
-        cudaMemcpyFromSymbol(&allSingletonAnswer, d_allSingletonAnswer, sizeof(allSingletonAnswer), 0, cudaMemcpyDeviceToHost);
+        computeAllSingletonArray<<<numBlocks, blockSize>>>(l,bucket2,singletonValues);
         
-        uint32_t* cpuIndexes2 = new uint32_t[l];
+
+        allSingletonAnswer = allSingleton(l-1,singletonValues,numBlocks,blockSize);
+
+        // cudaMemcpyFromSymbol(&allSingletonAnswer, d_allSingletonAnswer, sizeof(allSingletonAnswer), 0, cudaMemcpyDeviceToHost);
+        
+        // uint32_t* cpuIndexes2 = new uint32_t[l];
         // cudaMemcpy(cpuIndexes2, indexes, l*sizeof(uint32_t), cudaMemcpyDeviceToHost);
         // for(int i = 0; i < l; i++){
         //     std::cout << cpuIndexes2[i] << " ";
@@ -346,4 +346,8 @@ void SuffixArray::Sequence::copyToCPU(uint32_t* cpuIndexes, char* seq){
 void SuffixArray::Sequence::freeSequenceArray(){
     cudaFree(sequence);
     cudaFree(indexes);
+    cudaFree(singletonValues);
+    cudaFree(bucket2);
+    cudaFree(bucket);
+    cudaFree(combinedBuckets);
 }

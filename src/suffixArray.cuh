@@ -4,6 +4,7 @@
 namespace SuffixArray{
 
     struct Sequence {
+        bool* singletonValues;
         char* sequence;
         uint32_t* indexes;
         uint32_t* bucket2;
