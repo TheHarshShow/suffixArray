@@ -1,5 +1,7 @@
 # Parallelizing Suffix Array Construction
 
+Prerequisites: CUDA, zlib
+
 Clone the directory first
 ```
 cd ~
