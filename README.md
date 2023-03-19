@@ -16,6 +16,7 @@ Please run on a linux based environment. We developed our code on Ubuntu.
 
 ### Software Prerequisites
 
+The docker image from the assignments (yatisht/ece284-wi23:latest) should get you sorted.
 - CUDA
 - zlib
 
