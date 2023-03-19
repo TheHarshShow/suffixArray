@@ -1,6 +1,8 @@
 # Parallelizing Suffix Array Construction
 
-Prerequisites: CUDA, zlib
+Please run on a linux based environment. We developed our code on Ubuntu. Prerequisites: CUDA, zlib
+
+# Instructions
 
 Clone the directory first
 ```
