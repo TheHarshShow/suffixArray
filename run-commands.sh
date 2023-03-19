@@ -8,12 +8,13 @@ cd $repoDir
 # Recompile if necessary (DO NOT CHANGE!)
 mkdir -p build
 cd build
-cmake  -DTBB_DIR=${repoDir}/../oneTBB-2019_U9  -DCMAKE_PREFIX_PATH=${repoDir}/../oneTBB-2019_U9/cmake ..
+cmake ..
 make -j4
-export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${PWD}/tbb_cmake_build/tbb_cmake_build_subdir_release
 
 nvidia-smi
-## Basic run to map the first 40 reads in the reads.fa in batches of 10 reads
-## HINT: may need to change values for the assignment tasks. You can create a sequence of commands
-# nvprof ./readMapper --reference ../data/reference.fa --reads ../data/reads.fa  --maxReads 150000 --batchSize 1000 --numThreads 8
-nvprof ./suffixArray
+
+# Change sequence length and dataset here. Default is 10^6. Change it upto 10^8 but at 10^8 the sequential algorithm will run slower
+./suffixArray 1000000 ../data/droYak2_new_sanitised.fa
+
+# To use nvprof, comment out the above line and use this command instead
+# nvprof ./suffixArray 1000000 ../data/droYak2_new_sanitised.fa

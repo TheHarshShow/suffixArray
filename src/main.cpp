@@ -4,13 +4,10 @@
 #include <vector>
 #include <algorithm>
 #include <chrono>
-// #include <pair>
+#include <cstdlib>
 #include "suffixArray.cuh"
 #include "kseq.h"
 #include "zlib.h"
-
-// HINT: Replace this number for sequence length. We tested from 10^5 to 10^8
-#define SEQLEN 10000000
 
 // For reading in the FASTA file
 KSEQ_INIT2(, gzFile, gzread)
@@ -65,8 +62,10 @@ std::vector<int> sort_cyclic_shifts(string const& s) {
 
 int main(int argc, char* argv[]){
     
-    // HINT: Replace this file path to your datasets file path
-    std::string refFilename = "../data/droYak2_new_sanitised.fa";
+    uint32_t SEQLEN = atoi(argv[1]);
+
+    std::string refFilename = string(argv[2]);
+    // std::string refFilename = "../data/droYak2_new_sanitised.fa";
 
     // Read file from dataset
     gzFile fp = gzopen(refFilename.c_str(), "r");
@@ -81,11 +80,11 @@ int main(int argc, char* argv[]){
         exit(1);
     }
     printf("Sequence name: %s\n", record->name.s);
-    printf("Sequence size: %zu\n", SEQLEN);
+    printf("Sequence size: %u\n", SEQLEN);
 
     // Creating string for sequential code
     std::string s;
-    for(int i = 0; i < SEQLEN; i++)s+=record->seq.s[i];
+    for(uint32_t i = 0; i < SEQLEN; i++)s+=record->seq.s[i];
     s+='$';
 
     uint32_t* cpuIndexes = new uint32_t[SEQLEN+1];
