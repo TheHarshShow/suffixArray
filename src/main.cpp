@@ -9,6 +9,7 @@
 #include "kseq.h"
 #include "zlib.h"
 
+// HINT: Replace this number for sequence length. We tested from 10^5 to 10^8
 #define SEQLEN 10000000
 
 // For reading in the FASTA file
@@ -64,8 +65,10 @@ std::vector<int> sort_cyclic_shifts(string const& s) {
 
 int main(int argc, char* argv[]){
     
-    std::string refFilename = "../data/dm62.fa";
+    // HINT: Replace this file path to your datasets file path
+    std::string refFilename = "../data/droYak2_new_sanitised.fa";
 
+    // Read file from dataset
     gzFile fp = gzopen(refFilename.c_str(), "r");
     if (!fp) {
         fprintf(stderr, "ERROR: Cannot open file: %s\n", refFilename.c_str());
@@ -78,57 +81,51 @@ int main(int argc, char* argv[]){
         exit(1);
     }
     printf("Sequence name: %s\n", record->name.s);
-    printf("Sequence size: %zu\n", record->seq.l);
+    printf("Sequence size: %zu\n", SEQLEN);
 
+    // Creating string for sequential code
     std::string s;
     for(int i = 0; i < SEQLEN; i++)s+=record->seq.s[i];
     s+='$';
 
-    // std::vector< std::pair< std::string, int > > v({{s, 0}});
-    // for(int i = 1; i < s.length(); i++){
-    //     std::rotate(s.begin(), s.begin()+1, s.end());
-    //     v.push_back({s, i});
-    // }
-    // std::sort(v.begin(), v.end());
-
-
-    // uint32_t* cpuIndexes = (uint32_t *)malloc(sizeof(uint32_t)*(record->seq.l+1));
-
-    // uint32_t* cpuIndexes = new uint32_t[record->seq.l+1];
     uint32_t* cpuIndexes = new uint32_t[SEQLEN+1];
 
-
+    // Cuda data structure
     SuffixArray::Sequence seq;
+
+    // Allocate memory to arrays
     seq.allocateSequenceArray(SEQLEN+1);
 
-    // seq.allocateSequenceArray(record->seq.l+1);
-
+    // Copy sequence to GPU
     seq.copyToGPU(record->seq.s);
 
     auto parStart = std::chrono::high_resolution_clock::now();
 
+    // Compute Suffix Array on GPU
     seq.computeSuffixArray();
 
     auto parEnd = std::chrono::high_resolution_clock::now();
     std::chrono::nanoseconds parTime = parEnd - parStart;
 
-    std::cout << "Parallel Time: " << parTime.count() << " nanoseconds \n";
+    std::cout << "Parallel Time: " << parTime.count() << " nanoseconds" << std::endl;
 
-
+    // Get suffix array from GPU
     seq.copyToCPU(cpuIndexes, record->seq.s);
 
     auto seqStart = std::chrono::high_resolution_clock::now();
 
+    // Compute suffix array on CPU
     std::vector<int> v = sort_cyclic_shifts(s);
 
     auto seqEnd = std::chrono::high_resolution_clock::now();
     std::chrono::nanoseconds seqTime = seqEnd - seqStart;
 
-    std::cout << "Sequential Time: " << seqTime.count() << " nanoseconds \n";
-    std::cout << "Speed up: " << seqTime.count()*1.0/parTime.count() << "  \n";
+    std::cout << "Sequential Time: " << seqTime.count() << " nanoseconds" << std::endl;
+    std::cout << "Speed up: " << seqTime.count()*1.0/parTime.count() << std::endl;
 
     bool matched = true;
 
+    // Compare CPU array to GPU array
     for(size_t i = 0; i < SEQLEN+1; i++){
         if(cpuIndexes[i] != v[i]){
             matched = false;
@@ -145,7 +142,5 @@ int main(int argc, char* argv[]){
     seq.freeSequenceArray();
 
     delete[] cpuIndexes;
-
-    // std::cout << "Hello World 5!" << std::endl;
     
 }
